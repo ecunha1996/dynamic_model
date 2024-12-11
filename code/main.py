@@ -30,10 +30,16 @@ from rhs import get_bounds
 from drhs import get_dynamic_expressions
 from gsmmutils.dynamic.exchange_fluxes import get_exchange_fluxes
 from gsmmutils.graphics.plot import plot_concentrations, generate_plot_for_data
-import warnings
+# import warnings
+# logging.getLogger('pandas').setLevel(logging.CRITICAL)
+# warnings.filterwarnings("ignore")
+# logging.getLogger('dfba').setLevel(logging.CRITICAL)
+# logging.getLogger('jit').setLevel(logging.CRITICAL)
+# logging.getLogger("setuptools").setLevel(logging.CRITICAL)
+# logging.getLogger("distutils").setLevel(logging.CRITICAL)
+# logging.basicConfig(level=logging.CRITICAL)
+# warnings.filterwarnings("ignore", module="setuptools.*")
 
-logging.getLogger('pandas').setLevel(logging.CRITICAL)
-warnings.filterwarnings("ignore")
 
 DATA_PATH = "../data"
 RESULTS_PATH = f"../results"
@@ -88,6 +94,10 @@ def read_model() -> MyModel:
     }
     for reaction_id, value in objectives.items():
         stoichiometric_model.reactions.get_by_id(reaction_id).objective_coefficient = value
+
+
+
+
     return stoichiometric_model
 
 
@@ -469,7 +479,7 @@ def fitness_func(initial_parameters, conditions_names, parameters_names, paramet
     # print(f"Total error from set of parameters: {total_error}")
     with open(f"{RESULTS_PATH}/logs/temp_error.log", "w") as file:
         file.write(f"{total_error}\n")
-    return (round(total_error, 2),)
+    return (round(total_error, 3),)
 
 def fitness_func_mo(initial_parameters, conditions_names, parameters_names, parameters_under_optimization=None):
     """
@@ -530,11 +540,11 @@ def evaluate_trial(parameters, create_plots=False, condition=None):
         #           "Chlorophyll_concentration": "Chlorophyll_concentration", "Carotene_concentration": "Caro_concentration"
         #           }  #
         to_fit = {
-           #"Biomass": "DW",
+            # "Biomass": "DW",
             # 'Lipid': 'Lipid', 'Protein': 'Protein', 'Carbohydrate': 'Carbohydrate',
-            #  "Carotene": "Caro",
-            # "Chlorophyll": "Chl",
-            "Lutein": "Lutein",
+            "Carotene": "Caro",
+           # "Chlorophyll": "Chl",
+            # "Lutein": "Lutein",
             # "Chlorophyll_concentration": "Chlorophyll_concentration",
             # "Carotene_concentration": "Caro_concentration",
             # "Lutein_concentration": "Lutein_concentration"
@@ -775,6 +785,14 @@ def parameter_optimization_ea(custom_parameters: list = None):
     -------
 
     """
+
+    def check_bounds(individual, bounds):
+        for i in range(len(individual)):
+            if individual[i] < bounds[i][0]:
+                individual[i] = bounds[i][0]
+            elif individual[i] > bounds[i][1]:
+                individual[i] = bounds[i][1]
+        return individual
     from deap import base, creator, tools
 
     initial_parameters = OrderedDict(json.load(open(f"{DATA_PATH}/parameters/initial_parameters.json", "r")))
@@ -835,10 +853,10 @@ def parameter_optimization_ea(custom_parameters: list = None):
     toolbox.register("select", tools.selTournament, tournsize=3)
 
     # Genetic Algorithm parameters
-    population_size = 250
+    population_size = 500
     crossover_probability = 0.7
     mutation_probability = 0.2
-    generations = 10
+    generations = 50
 
     # Create the population
     population = toolbox.population(n=population_size)
@@ -865,6 +883,9 @@ def parameter_optimization_ea(custom_parameters: list = None):
                 if np.random.random() < mutation_probability:
                     toolbox.mutate(mutant)
                     del mutant.fitness.values
+
+            # for ind in offspring:
+            #     check_bounds(ind, bounds_log)
 
             # Evaluate the individuals with an invalid fitness
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
@@ -992,10 +1013,10 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
     toolbox.register("select", tools.selNSGA2)
 
     # Step 5: Genetic Algorithm parameters
-    population_size = 200
+    population_size = 100
     crossover_probability = 0.7
     mutation_probability = 0.2
-    generations = 25
+    generations = 5
 
     # Create the population
     population = toolbox.population(n=population_size)
@@ -1208,26 +1229,26 @@ if __name__ == '__main__':
     # parameter_optimization()
     # parameter_optimization_ea()
     parameter_optimization_ea([
-  # 'l_caro',
-       "l",
-  # 'Kaeration_caro',
- 'Kaeration_lut',
- 'ExA_lut',
-        # 'ExA_caro',
- # 'a0',
- # 'a0p',
- 'a0p_lut',
- 'a0_lut',
-  # 'a1',
- 'a1_lut',
-  # 'smoothing_factor',
-  # 'smoothing_factor_p',
- 'smoothing_factor_lut',
- 'smoothing_factor_lut_p',
-  # 'v_car_max',
- 'v_lut_max',
- 'lutein_aeration_exponent',
- # 'carotene_aeration_exponent'
+  'l_caro',
+       # "l",
+  'Kaeration_caro',
+ # 'Kaeration_lut',
+ # 'ExA_lut',
+        'ExA_caro',
+ 'a0',
+ 'a0p',
+ # 'a0p_lut',
+ # 'a0_lut',
+  'a1',
+ # 'a1_lut',
+  'smoothing_factor',
+  'smoothing_factor_p',
+ # 'smoothing_factor_lut',
+ # 'smoothing_factor_lut_p',
+  'v_car_max',
+ # 'v_lut_max',
+ # 'lutein_aeration_exponent',
+ 'carotene_aeration_exponent'
     ]
 )
 #     parameter_optimization_ea(
@@ -1235,63 +1256,71 @@ if __name__ == '__main__':
 #          'Esat',
 #          'KEchl',
 #          'ymax',
-#          'l',
 #          'Kaeration',
 #         "chl_aeration_exponent",
 #          "a0chlp",
-#         "smoothing_factor_chl_p"
+#         "smoothing_factor_chl_p",
+#             "v_nitrate_max",
+#             "wNmax",
+#             "wNmin",
+#             "VNmax",
+#             "KNm"
 #         ]
 #     )
 #     parameter_optimization_ea(
 #         [
 #          'K_nitrogen_quota',
 #          'v_nitrate_max',
-#          'v_polyphosphate_max',
+#         #  'v_polyphosphate_max',
 #          'wNmax',
 #          'wNmin',
-#          'wPmin',
+#         #  'wPmin',
 #          'Esat',
 #          'KEchl',
 #          'ymax',
-#          'KNm',
-#          'KPm',
-#          'VPmax',
-#          'l',
+#         #  'KPm',
+#         #  'VPmax',
 #          'Kaeration',
 #          "chl_aeration_exponent",
 #          "a0chlp",
-#         "smoothing_factor_chl_p"
+#         "smoothing_factor_chl_p",
+#             "VNmax",
+#             "KNm"
 #          ])
-#     parameter_optimization_ea([
-                            # 'ExA',
-                            # 'light_conversion_factor',
-                            # "K_nitrogen_quota",
-                            # 'ro0',
-                            # 'ro1',
-                            # 'v_nitrate_max',
-                            # 'v_polyphosphate_max',
-                            # 'wNmax',
-                            # 'wNmin',
-                            # 'wPmin',
-                            # 'Esat',
-                            # 'KEchl',
-                            # 'ymax',
-                            # 'maximum_starch_production',
-                            # 't_max',
-                            # 'vco2max',
-                            # 'maximum_tag_production',
-                            #    ])
+    # parameter_optimization_ea([
+    #                         'light_conversion_factor',
+    #                         "K_nitrogen_quota",
+    #                         'ro0',
+    #                         'ro1',
+    #                         'v_nitrate_max',
+    # #                         'v_polyphosphate_max',
+    #                         'wNmax',
+    #                         'wNmin',
+    #                         # 'wPmin',
+    #                         'Esat',
+    # #                         # 'KEchl',
+    # #                         # 'ymax',
+    #                         'maximum_starch_production',
+    #                         't_max',
+    #                         'maximum_tag_production',
+    #                         'vco2max',
+    #                         'VNmax',
+    # #                         'VPmax',
+    #                         "KNm",
+    # #                         "KPm"
+    #                            ])
     # run_all()
     # run_all_parallel()
     # initial_parameters = json.load(open(f"{DATA_PATH}/parameters/initial_parameters.json", "r"))
-    initial_parameters = json.load(open(f"{RESULTS_PATH}/parameters/optimized_parameters.json", "r"))
-    # initial_parameters.update(json.load(open(f"{RESULTS_PATH}/parameters/optimized_parameters.json", "r")))
-    run_condition("TC", initial_parameters)
-    run_condition("SC", initial_parameters)
-    #tc = evaluate_trial(initial_parameters, condition="TC")
-    #sc = evaluate_trial(initial_parameters, condition="SC")
-    #print(f"TC: {tc}\nSC: {sc}")
-    plt.show()
-    from debug import plot_caros
-    plot_caros()
+    # initial_parameters = json.load(open(f"{RESULTS_PATH}/parameters/optimized_parameters.json", "r"))
+
+    # run_condition("TC", initial_parameters)
+    # run_condition("SC", initial_parameters)
+
+    # tc = evaluate_trial(initial_parameters, condition="TC")
+    # sc = evaluate_trial(initial_parameters, condition="SC")
+    # print(f"TC: {tc}\nSC: {sc}")
+    # plt.show()
+    # from results_analysis import plot_caros
+    # plot_caros()
     # pass
