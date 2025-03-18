@@ -1,0 +1,234 @@
+{
+  "ro1": [
+    0,
+    100
+  ],
+  "ro0": [
+    0,
+    0.1
+  ],
+  "a0": [
+    0,
+    0.5
+  ],
+  "a0p": [
+    0,
+    0.1
+  ],
+  "a1": [
+    0,
+    0.1
+  ],
+  "a2": [
+    0,
+    100
+  ],
+  "a2_lut": [
+    0,
+    100
+  ],
+  "a3": [
+    0,
+    100
+  ],
+  "a4": [
+    0,
+    1
+  ],
+  "ExA_caro": [
+    0,
+    500
+  ],
+  "ExA_lut": [
+    0,
+    500
+  ],
+  "l": [
+    0,
+    10
+  ],
+  "l_caro": [
+    0,
+    10
+  ],
+  "smoothing_factor": [
+    0,
+    10000
+  ],
+  "smoothing_factor_p": [
+    0,
+    10000
+  ],
+  "smoothing_factor_chl_p": [
+    0,
+    10000
+  ],
+  "wPopt": [
+    0,
+    2
+  ],
+  "wPmin": [
+    0,
+    0.15
+  ],
+  "wNmax": [
+    0,
+    7
+  ],
+  "wNmin": [
+    0,
+    3
+  ],
+  "t_max": [
+    1,
+    10
+  ],
+  "K_nitrogen_quota": [
+    0,
+    1
+  ],
+  "VPmax": [
+    0,
+    7
+  ],
+  "KPm": [
+    0.0011,
+    0.01
+  ],
+  "VNmax": [
+    3.20,
+    6.72
+  ],
+  "KNm": [
+    0.019,
+    0.071
+  ],
+  "wgly_max": [
+    0,
+    0.5
+  ],
+  "maximum_starch_production": [
+    0,
+    0.1
+  ],
+  "maximum_tag_production": [
+    0,
+    0.5
+  ],
+  "v_nitrate_max": [
+    0,
+    10
+  ],
+  "v_polyphosphate_max": [
+    0,
+    0.1
+  ],
+  "v_car_max": [
+    0,
+    0.01
+  ],
+  "ymax": [
+    0,
+    10
+  ],
+  "Esat": [
+    0,
+    1500
+  ],
+  "KEchl": [
+    0,
+    150
+  ],
+  "vco2max": [
+    5,
+    20
+  ],
+  "Kstl": [
+    0,
+    2000
+  ],
+  "hill_coeff_starch": [
+    0,
+    10
+  ],
+  "light_conversion_factor": [
+    0,
+    10
+  ],
+  "v_lut_max": [
+    0,
+    0.01
+  ],
+  "a0_lut": [
+    0,
+    0.1
+  ],
+  "a0p_lut": [
+    0,
+    0.1
+  ],
+  "a0chlp": [
+    0,
+    0.1
+  ],
+  "a1_lut": [
+    0,
+    1
+  ],
+  "a3_lut": [
+    0,
+    100
+  ],
+  "a4_lut": [
+    0,
+    1
+  ],
+  "smoothing_factor_lut": [
+    0,
+    1000
+  ],
+  "smoothing_factor_lut_p": [
+    0,
+    1000
+  ],
+  "Kaeration": [
+    1,
+    15000
+  ],
+  "Kaeration_caro": [
+    800,
+    1500
+  ],
+  "Kaeration_lut": [
+    800,
+    1500
+  ],
+  "a": [
+    0,
+    0.01
+  ],
+  "b": [
+    0,
+    0.1
+  ],
+  "c": [
+    0,
+    1
+  ],
+  "lutein_aeration_exponent": [
+    4,
+    20
+  ],
+  "carotene_aeration_exponent": [
+    4,
+    20
+  ],
+  "chl_aeration_exponent": [
+    0,
+    20
+  ],
+  "nacl_lipid": [
+    0,
+    1
+  ]
+}

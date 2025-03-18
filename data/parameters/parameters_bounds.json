@@ -63,10 +63,6 @@
     0,
     10000
   ],
-  "wPopt": [
-    0,
-    2
-  ],
   "wPmin": [
     0,
     0.15
@@ -89,23 +85,19 @@
   ],
   "VPmax": [
     0,
-    1
+    7
   ],
   "KPm": [
-    0,
-    0.5
+    0.0011,
+    0.01
   ],
   "VNmax": [
-    0,
-    20
+    3.20,
+    6.72
   ],
   "KNm": [
-    0,
-    1
-  ],
-  "wgly_max": [
-    0,
-    0.5
+    0.019,
+    0.071
   ],
   "maximum_starch_production": [
     0,
@@ -175,14 +167,6 @@
     0,
     1
   ],
-  "a3_lut": [
-    0,
-    100
-  ],
-  "a4_lut": [
-    0,
-    1
-  ],
   "smoothing_factor_lut": [
     0,
     1000
@@ -191,40 +175,24 @@
     0,
     1000
   ],
-  "nacl_lipid": [
-    0,
-    0.1
-  ],
   "Kaeration": [
     1,
     15000
   ],
   "Kaeration_caro": [
-    1,
-    15000
+    800,
+    1500
   ],
   "Kaeration_lut": [
-    1,
-    15000
-  ],
-  "a": [
-    0,
-    0.01
-  ],
-  "b": [
-    0,
-    0.1
-  ],
-  "c": [
-    0,
-    1
+    800,
+    1500
   ],
   "lutein_aeration_exponent": [
-    0,
+    4,
     20
   ],
   "carotene_aeration_exponent": [
-    0,
+    4,
     20
   ],
   "chl_aeration_exponent": [

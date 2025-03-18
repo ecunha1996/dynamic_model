@@ -41,7 +41,7 @@ def plot_caros():
 
     axs = sc_conc.plot(x="time", y="Carotene", title="Carotene SC")
     axs.scatter(list(car_exp.keys()), list(car_exp.values()))
-    axs.set_ylabel("Carotene (g/gDW)")
+    axs.set_ylabel(r"$\beta$-carotene (g/gDW)")
     axs.set_xlabel("Time (d)")
     plt.show()
 
@@ -146,7 +146,10 @@ def make_plot(condition, conc, pigment, exp, std, axs):
         axs = conc.plot(x="time", y=pigment, title=f"{pigment} {condition}")
     # axs.scatter(list(exp.keys()), list(exp.values()))
     axs.errorbar(list(exp.keys()), [value for key, value in exp.items() if key in std.keys() ], yerr=list(std.values()), fmt='o', color='black', ecolor='black', elinewidth=1, capsize=3)
-    axs.set_ylabel(f"{pigment} (mg/gDW)")
+    if pigment == "Carotene":
+        axs.set_ylabel(r"$\beta$-carotene (mg/gDW)")
+    else:
+        axs.set_ylabel(f"{pigment} (mg/gDW)")
     axs.set_xlabel("Time (d)")
 
 def plot_caro(matrix, pigment="Carotene", axs=None):
@@ -183,7 +186,7 @@ def plot_1(matrix):
         tmp = sns.lineplot(x="time", y="Nitrate", data=concentrations, ax=axs[1, i], label="Nitrate")
         tmp.set_yticks(np.arange(0, concentrations.Nitrate.max()+1, 2))
         if i == 0:
-            tmp.set_ylabel("Nitrate (g/L)")
+            tmp.set_ylabel("Nitrate (mM)")
         else:
             tmp.set_ylabel("")
         twinx = tmp.twinx()
@@ -192,7 +195,7 @@ def plot_1(matrix):
         twinx.set_yticklabels(np.round(np.arange(0, concentrations.Phosphate.max()+0.01, 0.05), 2), fontsize=7)
         tmp.legend_.remove()
         if i == 1:
-            twinx.set_ylabel("Phosphate (g/L)")
+            twinx.set_ylabel("Phosphate (mM)")
         else:
             twinx.set_ylabel("")
         lines, labels = axs[1, i].get_legend_handles_labels()

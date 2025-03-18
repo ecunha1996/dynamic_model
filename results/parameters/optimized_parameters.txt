@@ -1,11 +1,10 @@
-l_caro	2.18552
-Kaeration_caro	483.51367
-ExA_caro	115.32848
-a0	0.01981
-a0p	0.00116
-a1	0.00022
-smoothing_factor	235.57444
-smoothing_factor_p	1852.77228
-v_car_max	0.00079
-carotene_aeration_exponent	3.12764
-Error after optimization:	0.2
+l	45.28185
+Kaeration_lut	704.52768
+ExA_lut	174.19904
+a0p_lut	0.00221
+a0_lut	0.00428
+smoothing_factor_lut	45.52283
+smoothing_factor_lut_p	168.93723
+v_lut_max	0.00302
+lutein_aeration_exponent	9.1561
+Error after optimization:	1.336

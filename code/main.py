@@ -1,3 +1,4 @@
+import argparse
 import copy
 import json
 import logging
@@ -17,6 +18,7 @@ from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
 from pandas import DataFrame
 from parallelbar import progress_imap, progress_map
+from sklearn.metrics import r2_score
 from sympy import Max, Abs, Min
 from timeout_decorator import timeout
 from tqdm import tqdm
@@ -44,6 +46,10 @@ from gsmmutils.graphics.plot import plot_concentrations, generate_plot_for_data
 DATA_PATH = "../data"
 RESULTS_PATH = f"../results"
 matrix = ExpMatrix(f"{DATA_PATH}/experimental/Matriz- DCCR Dunaliella salina_dfba_new.xlsx", conditions="Resume")
+matrix.matrix["OC"] = matrix.matrix["TC"]
+del matrix.matrix["TC"]
+matrix.conditions.index = [e.replace("TC", "OC") for e in matrix.conditions.index]
+
 
 
 def select_random_conditions(conditions, num_to_select, mandatory_strings):
@@ -154,7 +160,7 @@ def generate_all_plots(condition: str, concentrations: DataFrame, experimental: 
     -------
 
     """
-    if 'Caro' in matrix.matrix[condition].columns:
+    if  'Caro' in matrix.matrix[condition].columns:
         if condition.startswith("fachet") or condition.startswith("Xi") or condition.startswith("Yimei"):
             molecules = ['Caro']
             experimental_caro = [[matrix.matrix[condition][molecule].dropna().index.astype(float).tolist(),
@@ -285,7 +291,7 @@ def create_dfba_model(condition, parameters, create_plots=False):
     """
     parameters["Ex"], parameters["Ex0"] = get_bounds("light", parameters)
     dfba_model.add_exchange_flux_lb("EX_C00205__dra", sp.Max(sp.N(parameters["Ex"]), 0), parameters["light"])  #
-
+    dfba_model.add_exchange_flux_ub("EX_C00205__dra", sp.Max(sp.N(parameters["Ex"]), 0), parameters["light"])
     """
     NO3
     """
@@ -305,7 +311,7 @@ def create_dfba_model(condition, parameters, create_plots=False):
     """
     Starch
     """
-    dfba_model.add_exchange_flux_lb("DM_C00369__chlo", get_bounds("starch_consumption", parameters))
+    # dfba_model.add_exchange_flux_lb("DM_C00369__chlo", get_bounds("starch_consumption", parameters))
     dfba_model.add_exchange_flux_ub("DM_C00369__chlo", get_bounds("starch_production", parameters), parameters["starch"])
 
     """
@@ -347,7 +353,7 @@ def create_dfba_model(condition, parameters, create_plots=False):
     """
     dfba_model.add_initial_conditions(get_initial_conditions(matrix, condition))
     max_time = max(matrix.matrix[condition]['Time (d)'].astype(float).tolist()) + 1
-    time_step = 1 / 48
+    time_step = 1 / 72
     concentrations, trajectories = dfba_model.simulate(0.0, max_time, time_step,
                                                        ["e_ActiveBiomass__cytop", 'EX_C00009__dra',
                                                         "DM_C02094__chlo", "EX_C00244__dra",
@@ -357,6 +363,17 @@ def create_dfba_model(condition, parameters, create_plots=False):
                                                         "DM_C05306__chlo", "DM_C05307__chlo",
                                                         "DM_C00369__chlo", "DM_C00422__lip"
                                                         ])
+    if concentrations.time.tolist()[-1] < max_time/2:
+        time_step = 1 / 48
+        concentrations, trajectories = dfba_model.simulate(0.0, max_time, time_step,
+                                                           ["e_ActiveBiomass__cytop", 'EX_C00009__dra',
+                                                            "DM_C02094__chlo", "EX_C00244__dra",
+                                                            "EX_C00011__dra",
+                                                            "DM_C00404__vacu",
+                                                            "DM_C00244__cytop", "EX_C00205__dra", "DM_C08601__chlo",
+                                                            "DM_C05306__chlo", "DM_C05307__chlo",
+                                                            "DM_C00369__chlo", "DM_C00422__lip"
+                                                            ])
 
     active_biomass_fraction = concentrations['ActiveBiomass'] / concentrations['Biomass']
     concentrations.loc[:, 'Protein'] = abs(fba_model.reactions.e_ActiveBiomass__cytop.metabolites[
@@ -382,7 +399,7 @@ def create_dfba_model(condition, parameters, create_plots=False):
     return concentrations, trajectories
 
 
-def get_closest(list_a, list_b):
+def get_closest(list_a, list_b, return_index=False):
     """
     Gets the closest values from list_b to list_a.
     Parameters
@@ -395,9 +412,13 @@ def get_closest(list_a, list_b):
 
     """
     closest_values = []
+    indexes = []
     for num_a in list_a:
         index = np.abs(np.array(list_b) - num_a).argmin()
         closest_values.append(list_b[index])
+        indexes.append(index)
+    if return_index:
+        return indexes
     return closest_values
 
 
@@ -459,15 +480,15 @@ def fitness_func(initial_parameters, conditions_names, parameters_names, paramet
         for i, parameter_name in enumerate(parameters_under_optimization):
             parameters[parameter_name] = 2 ** initial_parameters[i]
     try:
-        total_error = sum(Parallel(n_jobs=len(conditions_names), timeout=30, backend="multiprocessing")(
+        total_error = Parallel(n_jobs=len(conditions_names), timeout=30, backend="multiprocessing")(
             delayed(evaluate_trial)(parameters, condition=condition) for condition in
-            conditions_names)) #/ len(conditions_names) * 100  # total_error = sum(progress_imap(partial(evaluate_trial, parameters, True), conditions_names,  #  process_timeout = 30))  #
+            conditions_names) #/ len(conditions_names) * 100  # total_error = sum(progress_imap(partial(evaluate_trial, parameters, True), conditions_names,  #  process_timeout = 30))  #
         # total_error = Parallel(n_jobs=len(conditions_names), timeout=30, backend="multiprocessing")(
         #     delayed(evaluate_trial)(parameters, condition=condition) for condition in
         #     conditions_names)
-        # error_1 = min(total_error)
-        # error_2 = max(total_error)
-        # total_error = error_1*1 + error_2*2
+        error_1 = min(total_error)
+        error_2 = max(total_error)
+        # total_error = error_1*1 + error_2*10
         # minimum = min(total_error)
         # maximum = max(total_error)
         # if minimum >= 0.15:
@@ -498,25 +519,92 @@ def fitness_func_mo(initial_parameters, conditions_names, parameters_names, para
     if not parameters_under_optimization:
         parameters = {}
         for i, parameter_name in enumerate(parameters_names):
-            parameters[parameter_name] = 2 ** initial_parameters[i]
+            try:
+                parameters[parameter_name] = 2 ** initial_parameters[i]
+            except OverflowError:
+                return [(condition, 1e3) for condition in conditions_names]
     else:
         parameters = json.load(open(f"{DATA_PATH}/parameters/initial_parameters.json", "r"))
         for i, parameter_name in enumerate(parameters_under_optimization):
-            parameters[parameter_name] = 2 ** initial_parameters[i]
+            try:
+                parameters[parameter_name] = 2 ** initial_parameters[i]
+            except OverflowError:
+                print(f"OverflowError for parameter: {parameter_name}")
+                parameters[parameter_name] = float('inf')
     try:
         total_error = Parallel(n_jobs=len(conditions_names), timeout=30, backend="multiprocessing")(
-            delayed(evaluate_trial)(parameters, condition=condition) for condition in
+            delayed(evaluate_trial_mo)(parameters, condition=condition) for condition in
             conditions_names)  # total_error = sum(progress_imap(partial(evaluate_trial, parameters, True), conditions_names,  #  process_timeout = 30))  #
     except Exception as e:
+        print("Error in fitness_func_mo:")
         print(e)
-        total_error = [1e3, 1e3]
+        total_error = [(condition, 1e3) for condition in conditions_names]
+    # total_error is a list of tuples with the condition and the error. sort the tuples by the condition name
+    total_error = sorted(total_error, key=lambda x: x[0])
     # print(f"Total error from set of parameters: {total_error}")
-    with open(f"{RESULTS_PATH}/logs/temp_error.log", "w") as file:
+    with open(f"{RESULTS_PATH}/logs/temp_error_mo.log", "w") as file:
         file.write(f"{total_error}\n")
-    return [round(e, 3) for e in total_error]
+    sorted_errors = [e[1] for e in total_error]
+    return tuple([round(e, 3) for e in sorted_errors])
 
 
-def evaluate_trial(parameters, create_plots=False, condition=None):
+def evaluate_trial(parameters, create_plots=False, condition=None, targets=None):
+    """
+    Evaluates a trial.
+    Parameters
+    ----------
+    parameters (dict): Dictionary with the parameters to use in the model.
+    create_plots (bool): Whether to create plots or not.
+    condition (str): Condition to create the model for.
+
+    Returns (float): The total error of the trial.
+    -------
+
+    """
+    # print(f"Trial: {condition}\n")
+    total_error = 0
+    total_number_of_points = 1
+    mat = matrix.matrix[condition]
+    mat['Time (d)'] = [round(e, 2) for e in mat.index.astype(float)]
+    try:
+        concentrations, trajectories = create_dfba_model(condition, parameters, create_plots)
+        # to_fit = {"Biomass": "DW", "Carotene": "Caro", "Chlorophyll": "Chl", "Starch": "Starch", "Nitrate": "NO3", 'Protein': 'Protein', 'Carbohydrate': 'Carbohydrate', 'Lipid': 'Lipid',
+        #           "Chlorophyll_concentration": "Chlorophyll_concentration", "Carotene_concentration": "Caro_concentration"
+        #           }  #
+        to_fit = {
+            "Biomass": "DW",
+            # 'Lipid': 'Lipid', 'Protein': 'Protein', 'Carbohydrate': 'Carbohydrate',
+            "Carotene": "Caro",
+           # "Chlorophyll": "Chl",
+            "Lutein": "Lutein",
+            # "Chlorophyll_concentration": "Chlorophyll_concentration",
+            # "Carotene_concentration": "Caro_concentration",
+            # "Lutein_concentration": "Lutein_concentration"
+        }
+        to_fit = {key: value for key, value in to_fit.items() if key in targets}
+        experimental_time = np.array(mat["Time (d)"])
+        if concentrations.time.max() < experimental_time.max():
+            return 1e3
+        closest = get_closest(experimental_time, concentrations.time)
+        at_time = concentrations.loc[concentrations.time.isin(closest)]
+        at_time.reset_index(inplace=True, drop=True)
+        mat.reset_index(inplace=True, drop=True)
+        for simulation_name, experimental_name in to_fit.items():
+            if experimental_name in mat.columns:
+                experimental = mat[experimental_name]
+                simulated = at_time[simulation_name]
+                relative_error, number_of_points = get_rmse(experimental, simulated)
+                total_error += relative_error
+                total_number_of_points += number_of_points
+                # print(f"Total error for {simulation_name}:\n{total_error}")
+    except Exception as e:
+        print(e)
+        with open(f"{RESULTS_PATH}/logs/temp_error.log", "a") as file:
+            file.write(f"{e}\n")
+        total_error = 1e3
+    return round(total_error, 3)
+
+def evaluate_trial_mo(parameters, create_plots=False, condition=None):
     """
     Evaluates a trial.
     Parameters
@@ -542,16 +630,16 @@ def evaluate_trial(parameters, create_plots=False, condition=None):
         to_fit = {
             # "Biomass": "DW",
             # 'Lipid': 'Lipid', 'Protein': 'Protein', 'Carbohydrate': 'Carbohydrate',
-            "Carotene": "Caro",
+            # "Carotene": "Caro",
            # "Chlorophyll": "Chl",
-            # "Lutein": "Lutein",
+            "Lutein": "Lutein",
             # "Chlorophyll_concentration": "Chlorophyll_concentration",
             # "Carotene_concentration": "Caro_concentration",
             # "Lutein_concentration": "Lutein_concentration"
         }
         experimental_time = np.array(mat["Time (d)"])
         if concentrations.time.max() < experimental_time.max():
-            return 1e3
+            return condition, 1e3
         closest = get_closest(experimental_time, concentrations.time)
         at_time = concentrations.loc[concentrations.time.isin(closest)]
         at_time.reset_index(inplace=True, drop=True)
@@ -569,7 +657,7 @@ def evaluate_trial(parameters, create_plots=False, condition=None):
         with open(f"{RESULTS_PATH}/logs/temp_error.log", "a") as file:
             file.write(f"{e}\n")
         total_error = 1e3
-    return round(total_error, 3)
+    return condition, round(total_error, 3)
 
 
 def get_relative_error(experimental, simulated):
@@ -621,7 +709,7 @@ import numbers
 def get_rmse(experimental, simulated):
     """
     Calculates the RMSE between two vectors.
-    
+
     Parameters
     ----------
     experimental: pandas Series
@@ -694,89 +782,14 @@ def callback_f(pbar, x):
     pbar.set_description(f"Current objective: {round(error, 3)}")
     pbar.update(1)
 
-
-def parameter_optimization(custom_parameters: list = None):
-    """
-    Runs the parameter optimization.
-    Returns
-    -------
-
-    """
-    from scipy.optimize import minimize
-
-    initial_parameters = json.load(open(f"{DATA_PATH}/parameters/initial_parameters.json", "r"))
-
-    method = 'Nelder-Mead'
-
-    # method = 'L-BFGS-B'
-    # method = 'SLSQP'
-    # method= 'TNC'
-
-    bounds_ordered_dict = OrderedDict(json.load(open(f"{DATA_PATH}/parameters/parameters_bounds.json", "r")))
-    bounds_ordered_dict = OrderedDict({key: bounds_ordered_dict[key] for key in initial_parameters.keys()})
-    conditions_names = set(matrix.matrix.keys()) - {"Resume"}
-    validation = select_random_conditions(list(conditions_names), 5, ['fachet_HLND', "Yimei_HL"])
-    conditions_names = tuple(conditions_names - set(validation) - {e for e in conditions_names if
-                                                                   e.startswith("Xi") or e.startswith(
-                                                                       "Yimei") or e.startswith("fachet")})
-    conditions_names = tuple(e for e in conditions_names if  e.startswith("SC")) #data_path
-    initial_error = sum(
-        progress_imap(partial(evaluate_trial, initial_parameters, True), conditions_names, n_cpu=len(conditions_names)))
-    print(f"Initial error: {initial_error}")
-    with open(f"{RESULTS_PATH}/validation.txt", 'w') as f:
-        f.write("Validation conditions:\n")
-        for e in validation:
-            f.write(f"{e}\n")
-        f.write(f"Initial error was: {initial_error}")
-    shutil.make_archive(f'{RESULTS_PATH}', 'zip', f'{RESULTS_PATH}')
-    max_iterations = 50
-
-    if custom_parameters:
-        initial_parameters.update({key: initial_parameters[key] for key in custom_parameters})
-        bounds_ordered_dict.update(OrderedDict({key: bounds_ordered_dict[key] for key in custom_parameters}))
-
-    initial_parameters_log = [math.log2(e) for e in initial_parameters.values()]
-    bounds_log = [(math.log2(e[0] + 1e-10), math.log2(e[1] + 1e-10)) for e in bounds_ordered_dict.values()]
-    with tqdm(total=max_iterations, desc=f"Running optimization for {len(conditions_names)}") as pbar:
-        result = minimize(partial(fitness, conditions_names, list(bounds_ordered_dict.keys()), custom_parameters), np.array(initial_parameters_log), method=method,
-                          bounds=bounds_log, callback=partial(callback_f, pbar), options={"maxiter": max_iterations})
-
-    optimal_params = [2 ** e for e in result.x]
-    for index, param in enumerate(optimal_params):
-        if round(param, 5) != 0:
-            optimal_params[index] = round(param, 5)
-
-    optimal_fitness = result.fun
-    optimal_parameters = {list(initial_parameters.keys())[index]: param for index, param in enumerate(optimal_params)}
-    # Print optimized parameters and fitness value
-    print("Optimized Parameters:\n")
-
-    with open(f"{RESULTS_PATH}/parameters/optimized_parameters_old.json", "w") as f:
-        json.dump(optimal_parameters, f, indent=4)
-
-    with open(f"{RESULTS_PATH}/parameters/optimized_parameters_old.txt", "w") as f:
-        for index, param in enumerate(optimal_params):
-            f.write(f"{list(initial_parameters.keys())[index]}\t{param}\n")
-            print(f"{list(initial_parameters.keys())[index]}:\t{param}\t{list(initial_parameters.values())[index]}\n")
-        f.write(f"Error after optimization:\t{str(optimal_fitness)}")
-    print("Optimized Fitness Value: ", optimal_fitness)
-    # final_error = sum(Parallel(n_jobs=30)(delayed(evaluate_trial)(fba_model, matrix, condition, optimal_parameters, create_plots=True) for condition in conditions_names))
-    # print(f"Final error was: {final_error}")
-
-    with tqdm(total=len(validation), desc="Running validation") as pbar:
-        validation_error = sum(Parallel(n_jobs=30)(
-            delayed(evaluate_trial)(optimal_parameters, create_plots=True, condition=condition) for condition in
-            validation))
-    pbar.set_description(f"Validation error: {validation_error}")
-    # validation_error = sum(progress_imap(partial(evaluate_trial, fba_model, matrix, optimal_parameters, True), conditions_names, n_cpu=len(conditions_names)))
-    print(f"Validation error was: {validation_error}")
-    with open(f"{RESULTS_PATH}/validation.txt", 'a') as f:
-        f.write(f"\nValidation error was: {validation_error}")
-
-    # run_all_parallel(optimal_parameters)
-    run_condition("TC", optimal_parameters)
-    run_condition("SC", optimal_parameters)
-
+def decode_solution(population):
+    result = []
+    for i, individual in enumerate(population):
+        try:
+            result.append([2 ** round(e, 5) if round(e, 5) != 0 else e for e in individual])
+        except OverflowError:
+            result.append([float('inf') if round(e, 5) != 0 else e for e in individual])
+    return result
 
 def parameter_optimization_ea(custom_parameters: list = None):
     """
@@ -800,16 +813,21 @@ def parameter_optimization_ea(custom_parameters: list = None):
     bounds_ordered_dict = OrderedDict(json.load(open(f"{DATA_PATH}/parameters/parameters_bounds.json", "r")))
     bounds_ordered_dict = OrderedDict({key: bounds_ordered_dict[key] for key in initial_parameters.keys()})
     conditions_names = set(matrix.matrix.keys()) - {"Resume"}
-    validation = select_random_conditions(list(conditions_names), 5, ['fachet_HLND', "Yimei_HL"])
-    conditions_names = tuple(e for e in conditions_names if e.startswith("TC") or e.startswith("SC")) #
+
+    conditions_names = tuple(e for e in conditions_names if e.startswith("OC") or e.startswith("SC")) #
+    # to_ignore = ["fachet", "Xi", "Yimei", "22"]
+    # conditions_names = list(set(sorted([e for e in conditions_names if not any(e.startswith(ignore) for ignore in to_ignore)]) + ["OC", "SC"]))
+
+    # validation = select_random_conditions(list(conditions_names), 5, [])
+
     initial_error = sum(
         progress_imap(partial(evaluate_trial, initial_parameters, True), conditions_names, n_cpu=len(conditions_names)))
     print(f"Initial error: {initial_error}")
-    with open(f"{RESULTS_PATH}/validation.txt", 'w') as f:
-        f.write("Validation conditions:\n")
-        for e in validation:
-            f.write(f"{e}\n")
-        f.write(f"Initial error was: {initial_error}")
+    # with open(f"{RESULTS_PATH}/validation.txt", 'w') as f:
+    #     f.write("Validation conditions:\n")
+    #     for e in validation:
+    #         f.write(f"{e}\n")
+    #     f.write(f"Initial error was: {initial_error}")
     shutil.make_archive(f'{RESULTS_PATH}', 'zip', f'{RESULTS_PATH}')
 
     if custom_parameters:
@@ -853,9 +871,9 @@ def parameter_optimization_ea(custom_parameters: list = None):
     toolbox.register("select", tools.selTournament, tournsize=3)
 
     # Genetic Algorithm parameters
-    population_size = 500
-    crossover_probability = 0.7
-    mutation_probability = 0.2
+    population_size = 150
+    crossover_probability = 0.8
+    mutation_probability = 0.3
     generations = 50
 
     # Create the population
@@ -947,7 +965,7 @@ def parameter_optimization_ea(custom_parameters: list = None):
     # run_all_parallel(optimal_parameters)
     # add non-cuistom parameters
 
-    run_condition("TC", optimal_parameters)
+    run_condition("OC", optimal_parameters)
     run_condition("SC", optimal_parameters)
 
 
@@ -963,6 +981,10 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
     import copy
     import json
     from multiprocessing import Pool
+    seed = 42
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
 
     # Load parameters
     initial_parameters = OrderedDict(json.load(open(f"{DATA_PATH}/parameters/initial_parameters.json", "r")))
@@ -970,8 +992,12 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
     bounds_ordered_dict = OrderedDict(json.load(open(f"{DATA_PATH}/parameters/parameters_bounds.json", "r")))
     bounds_ordered_dict = OrderedDict({key: bounds_ordered_dict[key] for key in initial_parameters.keys()})
     conditions_names = set(matrix.matrix.keys()) - {"Resume"}
-    validation = select_random_conditions(list(conditions_names), 5, ['fachet_HLND', "Yimei_HL"])
-    conditions_names = tuple(e for e in conditions_names if  e.startswith("SC")) #e.startswith("TC") or
+    # validation = select_random_conditions(list(conditions_names), 5, ['fachet_HLND', "Yimei_HL"])
+    conditions_names = tuple(e for e in conditions_names if e.startswith("OC") or  e.startswith("SC")) #
+
+    if custom_parameters:
+        initial_parameters = {key: initial_parameters[key] for key in custom_parameters}
+        bounds_ordered_dict = OrderedDict({key: bounds_ordered_dict[key] for key in custom_parameters})
 
     # Log normalization of initial parameters
     initial_parameters_log = [math.log2(e) for e in initial_parameters.values()]
@@ -984,13 +1010,16 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
     # Here we are assuming two objectives, one to minimize and one to maximize.
     # Adjust weights as needed, where each weight corresponds to an objective:
     # (-1.0, -1.0) for both minimization or (1.0, -1.0) for maximizing the first, minimizing the second.
-    creator.create("FitnessMulti", base.Fitness, weights=(-1.0, -1.0))
+
+    creator.create("FitnessMulti", base.Fitness, weights=(-1.0, -10.0))
     creator.create("Individual", list, fitness=creator.FitnessMulti)
 
     # Step 2: Create the toolbox for our evolutionary algorithm
     toolbox = base.Toolbox()
     pool = Pool()
     toolbox.register("map", pool.map)
+
+    best_individuals = {}
 
     # Random initialization within log-bounds
     def random_float_within_bounds(bounds):
@@ -1003,6 +1032,7 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
     # Step 3: Modify the fitness function to return multiple objectives
     # Assuming fitness_func can return a tuple (obj1, obj2)
     # where obj1 is to be minimized and obj2 is to be maximized (or both minimized)
+
     toolbox.register("evaluate", fitness_func_mo, conditions_names=conditions_names, parameters_names=list(initial_parameters.keys()), parameters_under_optimization=custom_parameters)
 
     # Step 4: Crossover, mutation, and selection operators
@@ -1013,16 +1043,19 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
     toolbox.register("select", tools.selNSGA2)
 
     # Step 5: Genetic Algorithm parameters
-    population_size = 100
-    crossover_probability = 0.7
-    mutation_probability = 0.2
-    generations = 5
+    population_size = 250
+    crossover_probability = 0.8
+    mutation_probability = 0.3
+    generations = 50
 
     # Create the population
     population = toolbox.population(n=population_size)
     for i in range(5):  # Seed 5 individuals with initial guess
         population[i] = create_individual()
     best_fitness = [float('inf'), float('inf')]
+    best_fitness_counter = 0
+    open(f"{RESULTS_PATH}/logs/best_parameters.json", "w").close()
+    open(f"{RESULTS_PATH}/logs/best_parameters.json", "w").close()
     # Step 6: Run the multi-objective optimization with progress bar
     with tqdm(total=generations, desc="Running optimization") as pbar:
         for gen in range(generations):
@@ -1047,12 +1080,19 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
 
-            # Update the best fitness values
-            for fit in [ind.fitness.values for ind in offspring]:
-                if fit[0] < best_fitness[0]:
-                    best_fitness[0] = fit[0]  # Update first objective
+            for ind in offspring:
+                fit = ind.fitness.values
                 if fit[1] < best_fitness[1]:
+                    best_fitness[0] = fit[0]  # Update first objective
                     best_fitness[1] = fit[1]  # Update second objective
+                    with open(f"{RESULTS_PATH}/logs/best_parameters.json", "a") as file:
+                        res = decode_solution([ind])
+                        best_fitness_counter += 1
+                        key = str(best_fitness_counter) + "_" + str(fit[0]) + "_" + str(fit[1])
+                        new_dict = {key: res}
+                        json.dump(new_dict, file, indent=4)
+                    best_individuals[key] = res
+
 
             # Replace the current population with the offspring
             population[:] = offspring
@@ -1061,13 +1101,40 @@ def parameter_optimization_ea_mo(custom_parameters: list = None):
             pbar.set_description(f"Current best: Obj1: {round(best_fitness[0], 3)}, Obj2: {round(best_fitness[1], 3)}")            # Update progress bar
             pbar.update(1)
 
-    # Extract the Pareto front (best solutions)
-    pareto_front = tools.sortNondominated(population, len(population), first_front_only=True)[0]
+    with open(f"{RESULTS_PATH}/logs/best_individuals.json", "a") as file:
+        json.dump(best_individuals, file, indent=4)
+
+    # remove population with infinities
+    population = [ind for ind in population if not any(e == float('inf') for e in ind.fitness.values)]
+
+    # pareto_fronts = tools.sortNondominated(population, len(population), first_front_only=True)
 
     # Return the Pareto front for analysis
     pool.close()
 
-    return pareto_front
+    with open(f"{RESULTS_PATH}/parameters/pareto_front.json", "w") as f:
+        for pareto_front in population:
+            pareto_front_decoded = decode_solution([pareto_front])
+            pareto_front_decoded = [ind for ind in pareto_front_decoded if not any(e == float('inf') for e in ind)]
+            pareto_results = OrderedDict()
+            for i, individual in enumerate(pareto_front_decoded):
+                pareto_results[i] = (fitness_func_mo(pareto_front, conditions_names, list(initial_parameters.keys()), custom_parameters),
+                    OrderedDict({key: individual[index] for index, key in enumerate(initial_parameters.keys())}))
+                json.dump(pareto_results, f, indent=4)
+
+    return pareto_results
+
+def get_ae(df, col1, col2):
+    """Calculate APE between two columns in a pandas DataFrame."""
+    return round(np.abs(df[col1] - df[col2]) / df[col1], 3)
+
+def get_rmse_v2(df, col1, col2):
+    """Calculate RMSE between two columns in a pandas DataFrame."""
+    return round(np.sqrt(((df[col1] - df[col2]) ** 2).mean()), 3)
+
+def get_r2(df, col1, col2):
+    """Calculate R^2 between two columns in a pandas DataFrame."""
+    return round(r2_score(df[col1], df[col2]), 3)
 
 
 def generate_trials_plots():
@@ -1078,45 +1145,49 @@ def generate_trials_plots():
 
     """
     (data_carotene, data_carotene_conc, data_chl, data_protein, data_lipid, data_carbohydrate, data_lutein,
-     data_lipid_conc, data_protein_conc, data_carbohydrate_conc) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+     data_lipid_conc, data_protein_conc, data_carbohydrate_conc, data_biomass) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
     (experimental_data_carotene, experimental_data_carotene_concentration, experimental_data_chl,
-     experimental_data_protein, experimental_data_lipid, experimental_data_carbohydrate, experimental_data_lutein, experimental_data_protein_concentration, experimental_data_carbohydrate_concentration,
+     experimental_data_biomass, experimental_data_protein, experimental_data_lipid, experimental_data_carbohydrate, experimental_data_lutein, experimental_data_protein_concentration, experimental_data_carbohydrate_concentration,
      experimental_data_lipid_concentration, sd_carotene, sd_lutein, sd_chl, sd_carotene_concentration, sd_lutein_concentration, sd_chl_concentration,
-     experimental_data_lutein_concentration, data_lutein_conc, data_chl_conc, experimental_data_chl_concentration) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+     experimental_data_lutein_concentration, data_lutein_conc, data_chl_conc, experimental_data_chl_concentration) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
     for condition in matrix.conditions.index:
         if 'Caro' in matrix.matrix[condition].columns and not condition.startswith(
-                "fachet") and not condition.startswith("Xi") and not condition.startswith("Yimei"):
+                "fachet") and not condition.startswith("Xi") and not condition.startswith("Yimei") and not {condition}.issubset({"OC", "SC", "OC_Sousa2024", "SC_Sousa2024"}):
             temp = pd.read_csv(f"{RESULTS_PATH}/concentrations/concentrations_{condition}.csv")
+            final_time_index = get_closest(matrix.matrix[condition].index.astype(float).tolist(), temp.time.tolist(), return_index=True)[-1]
             dry_weight = matrix.matrix[condition]['DW'].dropna().tolist()[-1]
-            data_carotene[condition] = temp.iloc[-1]['Carotene']
-            data_carotene_conc[condition] = temp.iloc[-1]['Carotene'] * temp.iloc[-1]['Biomass']
-            data_chl_conc[condition] = temp.iloc[-1]['Chlorophyll'] * temp.iloc[-1]['Biomass']
-            data_lutein_conc[condition] = temp.iloc[-1]['Lutein'] * temp.iloc[-1]['Biomass']
-            data_lutein[condition] = temp.iloc[-1]['Lutein']
-            data_chl[condition] = temp.iloc[-1]['Chlorophyll']
-            data_protein[condition] = temp.iloc[-1]['Protein']
-            data_protein_conc[condition] = temp.iloc[-1]['Protein'] * temp.iloc[-1]['Biomass']
-            data_lipid[condition] = temp.iloc[-1]['Lipid']
-            data_lipid_conc[condition] = temp.iloc[-1]['Lipid'] * temp.iloc[-1]['Biomass']
-            data_carbohydrate[condition] = temp.iloc[-1]['Carbohydrate']
-            data_carbohydrate_conc[condition] = temp.iloc[-1]['Carbohydrate'] * temp.iloc[-1]['Biomass']
-            experimental_data_carotene[condition] = matrix.matrix[condition]['Caro'].dropna().tolist()[-1]
-            experimental_data_lutein[condition] = matrix.matrix[condition]['Lutein'].dropna().tolist()[-1]
-            experimental_data_carotene_concentration[condition] = matrix.matrix[condition]['Caro'].dropna().tolist()[-1] * dry_weight
+            data_biomass[condition] = temp.iloc[final_time_index]['Biomass']
+            data_carotene[condition] = temp.iloc[final_time_index]['Carotene'] *1000
+            data_carotene_conc[condition] = temp.iloc[final_time_index]['Carotene'] * temp.iloc[final_time_index]['Biomass'] *1000
+            data_chl_conc[condition] = temp.iloc[final_time_index]['Chlorophyll'] * temp.iloc[final_time_index]['Biomass']
+            data_lutein_conc[condition] = temp.iloc[final_time_index]['Lutein'] * temp.iloc[final_time_index]['Biomass'] *1000
+            data_lutein[condition] = temp.iloc[final_time_index]['Lutein'] *1000
+            data_chl[condition] = temp.iloc[final_time_index]['Chlorophyll']
+            data_protein[condition] = temp.iloc[final_time_index]['Protein']
+            data_protein_conc[condition] = temp.iloc[final_time_index]['Protein'] * temp.iloc[-1]['Biomass']
+            data_lipid[condition] = temp.iloc[final_time_index]['Lipid']
+            data_lipid_conc[condition] = temp.iloc[final_time_index]['Lipid'] * temp.iloc[final_time_index]['Biomass']
+            data_carbohydrate[condition] = temp.iloc[final_time_index]['Carbohydrate']
+            data_carbohydrate_conc[condition] = temp.iloc[final_time_index]['Carbohydrate'] * temp.iloc[final_time_index]['Biomass']
+            experimental_data_carotene[condition] = matrix.matrix[condition]['Caro'].dropna().tolist()[-1] *1000
+            experimental_data_lutein[condition] = matrix.matrix[condition]['Lutein'].dropna().tolist()[-1] *1000
+            experimental_data_carotene_concentration[condition] = matrix.matrix[condition]['Caro'].dropna().tolist()[-1] * dry_weight *1000
             # experimental_data_chl[condition] = matrix.matrix[condition]['Chl'].dropna().tolist()[-1]
             # experimental_data_chl_concentration[condition] = matrix.matrix[condition]['Chl'].dropna().tolist()[-1] * dry_weight
-            experimental_data_lutein_concentration[condition] = matrix.matrix[condition]['Lutein'].dropna().tolist()[-1] * dry_weight
-            sd_carotene_concentration[condition] = matrix.matrix[condition]['Caro_c_sd'].dropna().tolist()[-1]
-            sd_lutein_concentration[condition] = matrix.matrix[condition]['Lutein_c_sd'].dropna().tolist()[-1]
+            experimental_data_lutein_concentration[condition] = matrix.matrix[condition]['Lutein'].dropna().tolist()[-1] * dry_weight *1000
+            sd_carotene_concentration[condition] = matrix.matrix[condition]['Caro_c_sd'].dropna().tolist()[-1] *1000
+            sd_lutein_concentration[condition] = matrix.matrix[condition]['Lutein_c_sd'].dropna().tolist()[-1] *1000
             # sd_chl_concentration[condition] = matrix.matrix[condition]['Chl_c_sd'].dropna().tolist()[-1]
-            sd_carotene[condition] = matrix.matrix[condition]['Caro_sd'].dropna().tolist()[-1]
-            sd_lutein[condition] = matrix.matrix[condition]['Lutein_sd'].dropna().tolist()[-1]
+            sd_carotene[condition] = matrix.matrix[condition]['Caro_sd'].dropna().tolist()[-1] *1000
+            sd_lutein[condition] = matrix.matrix[condition]['Lutein_sd'].dropna().tolist()[-1] *1000
             # sd_chl[condition] = matrix.matrix[condition]['Chl_sd'].dropna().tolist()[-1]
 
             data_protein[condition] = temp.iloc[-1]['Protein']
             data_lipid[condition] = temp.iloc[-1]['Lipid']
             data_lipid_conc[condition] = temp.iloc[-1]['Lipid'] * temp.iloc[-1]['Biomass']
             data_carbohydrate[condition] = temp.iloc[-1]['Carbohydrate']
+
+            experimental_data_biomass[condition] = matrix.matrix[condition]['DW'].dropna().tolist()[-1]
 
             molecules = ["Protein", "Lipid", "Carbohydrate"]
             if all(molecule in matrix.matrix[condition].columns for molecule in molecules):
@@ -1127,10 +1198,10 @@ def generate_trials_plots():
                 experimental_data_carbohydrate[condition] = matrix.matrix[condition]['Carbohydrate'].dropna().tolist()[-1]
                 experimental_data_carbohydrate_concentration[condition] = matrix.matrix[condition]['Carbohydrate'].dropna().tolist()[-1] * matrix.matrix[condition]['DW'].dropna().tolist()[-1]
 
-    generate_plot_for_data(f"{RESULTS_PATH}/pigments/carotene_in_house.png", experimental_data_carotene, data_carotene, sd_carotene_concentration, r"$\beta$-Carotene (g/gDW)")
-    generate_plot_for_data(f"{RESULTS_PATH}/pigments/carotene_concentration_in_house.png", experimental_data_carotene_concentration, data_carotene_conc, sd_carotene_concentration, r"$\beta$-Carotene (g/L)")
-    generate_plot_for_data(f"{RESULTS_PATH}/pigments/lutein_in_house.png", experimental_data_lutein, data_lutein, sd_lutein, r"Lutein (g/gDW)")
-    generate_plot_for_data(f"{RESULTS_PATH}/pigments/lutein_concentration_in_house.png", experimental_data_lutein_concentration, data_lutein_conc, sd_lutein_concentration, r"Lutein (g/L)")
+    generate_plot_for_data(f"{RESULTS_PATH}/pigments/carotene_in_house.pdf", experimental_data_carotene, data_carotene, sd_carotene_concentration, r"$\beta$-Carotene (mg/gDW)")
+    generate_plot_for_data(f"{RESULTS_PATH}/pigments/carotene_concentration_in_house.pdf", experimental_data_carotene_concentration, data_carotene_conc, sd_carotene_concentration, r"$\beta$-Carotene ($mg \cdot L^{-1}$)")
+    generate_plot_for_data(f"{RESULTS_PATH}/pigments/lutein_in_house.pdf", experimental_data_lutein, data_lutein, sd_lutein, r"Lutein (mg/gDW)")
+    generate_plot_for_data(f"{RESULTS_PATH}/pigments/lutein_concentration_in_house.pdf", experimental_data_lutein_concentration, data_lutein_conc, sd_lutein_concentration, r"Lutein ($mg \cdot L^{-1}$)")
     # generate_plot_for_data(f"{DATA_PATH}/dfba/pigments/chl_in_house.png", experimental_data_chl, data_chl, sd_chl, r"Chlorophyll (g/gDW)")
     # generate_plot_for_data(f"{DATA_PATH}/dfba/pigments/chl_concentration_in_house.png", experimental_data_chl_concentration, data_chl_conc, sd_chl_concentration, r"Chlorophyll (g/L)")
 
@@ -1140,6 +1211,86 @@ def generate_trials_plots():
     generate_plot_for_data(f"{RESULTS_PATH}/macros/lipid_concentration_in_house.png", experimental_data_lipid_concentration, data_lipid_conc, {}, r"Lipid (g/L)")
     generate_plot_for_data(f"{RESULTS_PATH}/macros/carbohydrate_in_house.png", experimental_data_carbohydrate, data_carbohydrate, {}, r"Carbohydrate (g/gDW)")
     generate_plot_for_data(f"{RESULTS_PATH}/macros/carbohydrate_concentration_in_house.png", experimental_data_carbohydrate_concentration, data_carbohydrate_conc, {}, r"Carbohydrate (g/L)")
+
+    # merge expreimental data and simulated data of carotene and lutein and biomass into a single dataframe, where each row is a condition
+
+    df = pd.DataFrame()
+    df.index = matrix.conditions.index
+    df['N mM'] = df.index.map({condition: matrix.matrix["Resume"].loc[condition]['[N] mmol'] for condition in matrix.conditions.index})
+    df['P mM'] = df.index.map({condition: matrix.matrix["Resume"].loc[condition]['[P] mmol'] for condition in matrix.conditions.index})
+    # df['Salinity'] = df.index.map({condition: matrix.matrix["Resume"].loc[condition]['Salinity g/L'] for condition in matrix.conditions.index})
+    df['Aeration rate'] = df.index.map({condition: matrix.matrix["Resume"].loc[condition]['Aeration rate'] for condition in matrix.conditions.index})
+    # df['Biomass'] =  df.index.map(experimental_data_biomass)
+    # df['Biomass_simulated'] = df.index.map(data_biomass)
+    # df['Biomass diff'] = get_ae(df, 'Biomass', 'Biomass_simulated')
+    # df['Carotene'] = pd.Series(experimental_data_carotene)*1000
+    # df['Carotene_simulated'] = pd.Series(data_carotene)*1000
+    # df['Carotene_diff'] = get_ae(df, 'Carotene', 'Carotene_simulated')
+    df['Carotene_concentration'] = pd.Series(experimental_data_carotene_concentration)
+    df['Carotene_concentration_simulated'] = pd.Series(data_carotene_conc)
+    df['Carotene_concentration_diff'] = get_ae(df, 'Carotene_concentration', 'Carotene_concentration_simulated')
+    # df['Lutein'] = pd.Series(experimental_data_lutein)*1000
+    # df['Lutein_simulated'] = pd.Series(data_lutein)*1000
+    # df['Lutein_diff'] = get_ae(df, 'Lutein', 'Lutein_simulated')
+    df['Lutein_concentration'] = pd.Series(experimental_data_lutein_concentration)
+    df['Lutein_concentration_simulated'] = pd.Series(data_lutein_conc)
+    df['Lutein_concentration_diff'] = get_ae(df, 'Lutein_concentration', 'Lutein_concentration_simulated')
+    df.dropna(inplace=True)
+    df.columns = [col.replace("_", " ") for col in df.columns]
+    df.to_csv(f"{RESULTS_PATH}/pigments/pigments_matrix.tsv", sep="\t")
+    df['N mM'] = df['N mM'].map(lambda x: f"{x:.1f}" if '.' in str(x) else f"{x:.0f}")  # Keeps 3 decimals max
+    df['P mM'] = df['P mM'].map(lambda x: f"{x:.2f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Salinity'] = df['Salinity'].map(lambda x: f"{x:.0f}" if '.' in str(x) else f"{x:.0f}")
+    df['Aeration rate'] = df['Aeration rate'].map(lambda x: f"{x:.0f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Biomass'] = df['Biomass'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Biomass simulated'] = df['Biomass simulated'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Biomass diff'] = df['Biomass diff'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Carotene'] = df['Carotene'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Carotene simulated'] = df['Carotene simulated'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Carotene diff'] = df['Carotene diff'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    df['Carotene concentration'] = df['Carotene concentration'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    df['Carotene concentration simulated'] = df['Carotene concentration simulated'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    df['Carotene concentration diff'] = df['Carotene concentration diff'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Lutein'] = df['Lutein'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Lutein simulated'] = df['Lutein simulated'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    # df['Lutein diff'] = df['Lutein diff'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    df['Lutein concentration'] = df['Lutein concentration'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    df['Lutein concentration simulated'] = df['Lutein concentration simulated'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+    df['Lutein concentration diff'] = df['Lutein concentration diff'].map(lambda x: f"{x:.3f}" if '.' in str(x) else f"{x:.0f}")
+
+    df.to_latex(f"{RESULTS_PATH}/pigments/pigments_matrix.tex", column_format="l" + "c" * len(df.columns), escape=False, longtable=True)
+
+    # df['Carotene'] = df['Carotene'].astype(float)
+    # df['Carotene simulated'] = df['Carotene simulated'].astype(float)
+    df['Carotene concentration'] = df['Carotene concentration'].astype(float)
+    df['Carotene concentration simulated'] = df['Carotene concentration simulated'].astype(float)
+    # df['Lutein'] = df['Lutein'].astype(float)
+    # df['Lutein simulated'] = df['Lutein simulated'].astype(float)
+    df['Lutein concentration'] = df['Lutein concentration'].astype(float)
+    df['Lutein concentration simulated'] = df['Lutein concentration simulated'].astype(float)
+    # df['Biomass'] = df['Biomass'].astype(float)
+    # df['Biomass simulated'] = df['Biomass simulated'].astype(float)
+
+    # print(f"Carotene RMSE: {get_rmse_v2(df, 'Carotene', 'Carotene simulated')}")
+    # print(f"Lutein RMSE: {get_rmse_v2(df, 'Lutein', 'Lutein simulated')}")
+    print(f"Carotene concentration RMSE: {get_rmse_v2(df, 'Carotene concentration', 'Carotene concentration simulated')}")
+    print(f"Lutein concentration RMSE: {get_rmse_v2(df, 'Lutein concentration', 'Lutein concentration simulated')}")
+    # print(f"Biomass RMSE: {get_rmse_v2(df, 'Biomass', 'Biomass simulated')}")
+    # print(f"Carotene R2: {get_r2(df, 'Carotene', 'Carotene simulated')}")
+    # print(f"Lutein R2: {get_r2(df, 'Lutein', 'Lutein simulated')}")
+    print(f"Carotene concentration R2: {get_r2(df, 'Carotene concentration', 'Carotene concentration simulated')}")
+    print(f"Lutein concentration R2: {get_r2(df, 'Lutein concentration', 'Lutein concentration simulated')}")
+    # print(f"Biomass R2: {get_r2(df, 'Biomass', 'Biomass simulated')}")
+
+    nrmse_carotene = get_rmse_v2(df, 'Carotene concentration', 'Carotene concentration simulated') / df['Carotene concentration'].mean()
+    nrmse_lutein = get_rmse_v2(df, 'Lutein concentration', 'Lutein concentration simulated') / df['Lutein concentration'].mean()
+    print(f"Carotene concentration NRMSE: {nrmse_carotene}")
+    print(f"Lutein concentration NRMSE: {nrmse_lutein}")
+    mape_carotene = get_ae(df, 'Carotene concentration', 'Carotene concentration simulated').mean()
+    mape_lutein = get_ae(df, 'Lutein concentration', 'Lutein concentration simulated').mean()
+    print(f"Carotene concentration MAPE: {mape_carotene}")
+    print(f"Lutein concentration MAPE: {mape_lutein}")
+
 
     plt.figure(figsize=(10, 10))
     for condition in matrix.conditions.index:
@@ -1186,6 +1337,7 @@ def run_all_parallel(initial_parameters=None):
     conditions_names = set([condition for condition in conditions_names if
                             not condition.startswith("fachet") and not condition.startswith(
                                 "Xi") and not condition.startswith("Yimei")])
+    conditions_names = conditions_names - {"OC", "SC"}
     total_error = sum(
         progress_map(partial(evaluate_trial, initial_parameters, True), conditions_names, n_cpu=len(conditions_names),
                      process_timeout=60)) / len(conditions_names) * 100
@@ -1225,32 +1377,64 @@ def run_all():
             pbar.update(1)
 
 
-if __name__ == '__main__':
-    # parameter_optimization()
-    # parameter_optimization_ea()
-    parameter_optimization_ea([
-  'l_caro',
-       # "l",
-  'Kaeration_caro',
- # 'Kaeration_lut',
- # 'ExA_lut',
-        'ExA_caro',
- 'a0',
- 'a0p',
- # 'a0p_lut',
- # 'a0_lut',
-  'a1',
- # 'a1_lut',
-  'smoothing_factor',
-  'smoothing_factor_p',
- # 'smoothing_factor_lut',
- # 'smoothing_factor_lut_p',
-  'v_car_max',
- # 'v_lut_max',
- # 'lutein_aeration_exponent',
- 'carotene_aeration_exponent'
+def optimize_lutein():
+    parameter_optimization_ea_mo([
+        "l",
+        'Kaeration_lut',
+        'ExA_lut',
+        'a0p_lut',
+        'a0_lut',
+        'smoothing_factor_lut',
+        'smoothing_factor_lut_p',
+        'v_lut_max',
+        'lutein_aeration_exponent',
     ]
-)
+    )
+
+def optimize_carotene():
+    parameter_optimization_ea([
+        'l_caro',
+        'Kaeration_caro',
+        'ExA_caro',
+        'a0',
+        'a0p',
+        'smoothing_factor',
+        'smoothing_factor_p',
+        'v_car_max',
+        'carotene_aeration_exponent'
+    ]
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run specific functions from the script.")
+    parser.add_argument("function", choices=["optimize_lutein", "optimize_carotene", "run_all",
+                                             "run_all_parallel", "run_condition"], help="Function to run")
+    parser.add_argument("--condition", type=str, help="Condition to run for run_condition function")
+    args = parser.parse_args()
+    initial_parameters = json.load(open(f"{RESULTS_PATH}/parameters/optimized_parameters.json", "r"))
+    if args.function == "optimize_lutein":
+        optimize_lutein()
+    elif args.function == "optimize_carotene":
+        optimize_carotene()
+    elif args.function == "run_all":
+        run_all()
+    elif args.function == "run_all_parallel":
+        run_all_parallel(initial_parameters)
+    elif args.function == "run_condition":
+        if args.condition:
+            run_condition(args.condition, initial_parameters)
+        else:
+            print("Please provide a condition using --condition for the run_condition function.")
+            sys.exit(1)
+
+if __name__ == '__main__':
+    main()
+    # parameter_optimization_ea()
+    # optimize_lutein()
+    # optimize_carotene()
+    # save paretto front
+
 #     parameter_optimization_ea(
 #         [
 #          'Esat',
@@ -1310,16 +1494,17 @@ if __name__ == '__main__':
     # #                         "KPm"
     #                            ])
     # run_all()
-    # run_all_parallel()
-    # initial_parameters = json.load(open(f"{DATA_PATH}/parameters/initial_parameters.json", "r"))
     # initial_parameters = json.load(open(f"{RESULTS_PATH}/parameters/optimized_parameters.json", "r"))
-
-    # run_condition("TC", initial_parameters)
+    # run_all_parallel(initial_parameters)
+    # initial_parameters = json.load(open(f"{DATA_PATH}/parameters/initial_parameters.json", "r"))
+    #
+    # matrix.conditions.loc["TC", "[N] mmol"] = 3
+    # run_condition("OC", initial_parameters)
     # run_condition("SC", initial_parameters)
 
-    # tc = evaluate_trial(initial_parameters, condition="TC")
-    # sc = evaluate_trial(initial_parameters, condition="SC")
-    # print(f"TC: {tc}\nSC: {sc}")
+    # tc = evaluate_trial_mo(initial_parameters, condition="OC")
+    # sc = evaluate_trial_mo(initial_parameters, condition="SC")
+    # print(f"OC: {tc}\nSC: {sc}")
     # plt.show()
     # from results_analysis import plot_caros
     # plot_caros()

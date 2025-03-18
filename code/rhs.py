@@ -49,18 +49,21 @@ def phi(x, rs):
 def carotene(parameters):
     v_car_gen = (parameters["v_car_max"] * (parameters["Ex"] ** parameters["l_caro"]) / ((parameters["ExA_caro"] ** parameters["l_caro"]) + (parameters["Ex"] ** parameters["l_caro"]))*
                  (parameters["Kaeration_caro"] ** parameters['carotene_aeration_exponent'] / (parameters["aeration"] ** parameters['carotene_aeration_exponent'] +
-                                                                                         parameters["Kaeration_caro"] ** parameters['carotene_aeration_exponent'])))
+                                                                                         parameters["Kaeration_caro"] ** parameters['carotene_aeration_exponent']))
+                 )
     vcar = (v_car_gen * phi(parameters["a1"] * parameters["Ex"] + parameters["a0"] -  parameters["nitrogen_mass_quota"], parameters["smoothing_factor"])
             # *phi(parameters["a1"] * parameters["Ex"] - parameters["a0p"] + parameters["phosphate_mass_quota"], parameters["smoothing_factor_p"]))
-            * phi(parameters["a0p"] + parameters["phosphate_mass_quota"], parameters["smoothing_factor_p"]))
+            * phi(-parameters["a0p"] + parameters["phosphate_mass_quota"], parameters["smoothing_factor_p"]))
     return sp.Max(0, sp.N(vcar))
 
 
 def lutein(parameters):
     v_lut_gen = (parameters["v_lut_max"] * (parameters["Ex"] ** parameters["l"]) / ((parameters["ExA_lut"] ** parameters["l"]) + (parameters["Ex"] ** parameters["l"]))*
-                 (parameters["Kaeration_lut"] ** parameters['lutein_aeration_exponent'] / (parameters["aeration"] ** parameters['lutein_aeration_exponent'] + parameters["Kaeration_lut"] ** parameters['lutein_aeration_exponent'])))
+                 (parameters["Kaeration_lut"] ** parameters['lutein_aeration_exponent'] / (parameters["aeration"] ** parameters['lutein_aeration_exponent'] +
+                                                                                           parameters["Kaeration_lut"] ** parameters['lutein_aeration_exponent'])))
     vlut = (v_lut_gen * phi(parameters["a1_lut"] * parameters["Ex"] + parameters["a0_lut"]  - parameters["nitrogen_mass_quota"], parameters["smoothing_factor_lut"]) *
-            phi(parameters["a1_lut"] * parameters["Ex"] - parameters["a0p_lut"] + parameters["phosphate_mass_quota"], parameters["smoothing_factor_lut_p"]))
+            # phi(parameters["a1_lut"] * parameters["Ex"] - parameters["a0p_lut"] + parameters["phosphate_mass_quota"], parameters["smoothing_factor_lut_p"]))
+            phi(-parameters["a0p_lut"] + parameters["phosphate_mass_quota"], parameters["smoothing_factor_lut_p"]))
     return sp.Max(0, sp.N(vlut))
 
 def chlorophyll(parameters):
@@ -85,6 +88,7 @@ def chlorophyll(parameters):
 
 def tag(parameters):
     # return sp.Max(sp.N(parameters["maximum_tag_production"] / parameters["F"] / 904.78 * parameters["n"] * parameters["nacl_lipid"] * 1 / parameters["nacl"]), 0)
+    # return sp.Max(sp.N(parameters["maximum_tag_production"] * parameters["n"] * parameters["nacl_lipid"]  / (parameters["nacl"] + parameters["nacl_lipid"])), 0)
     return sp.Max(sp.N(parameters["maximum_tag_production"] * parameters["n"]), 0)
 
 
