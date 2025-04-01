@@ -243,10 +243,10 @@ def fitness_func(initial_parameters, conditions_names, parameters_names, target=
             delayed(evaluate_trial)(parameters, condition=condition, targets=[target]) for condition in
             conditions_names)), 3)
         if total_error >= 1e3:
-            total_error = np.nan
+            total_error = np.inf
     except Exception as e:
         print(e)
-        total_error =  np.nan
+        total_error =  np.inf
     return total_error
 
 def sensitivity_analysis(target):
@@ -261,7 +261,7 @@ def sensitivity_analysis(target):
         'names': parameter_names,
         'bounds': parameter_values
     }
-    number_of_trajectories = 100
+    number_of_trajectories = 500
     param_values = morris.sample(problem, N=number_of_trajectories, num_levels=4)
     # with open(f"{RESULTS_PATH}/param_values.json", "w") as f:
     #     json.dump(param_values.tolist(), f)
@@ -280,7 +280,7 @@ def sensitivity_analysis(target):
     # param_values_filtered = param_values[valid_indices]
     # Y_filtered = Y[valid_indices]
 
-    with open(f"{RESULTS_PATH}/Y_{target}.json", "w") as f:
+    with open(f"{RESULTS_PATH}/sensitivity/Y_{target}.json", "w") as f:
         json.dump(Y.tolist(), f)
 
     # with open(f"{RESULTS_PATH}/Y_filtered_{target}.json", "w") as f:
@@ -308,7 +308,7 @@ def sensitivity_analysis(target):
 
     Si_serializable = {key: np.ma.filled(value, np.nan).tolist() if isinstance(value, np.ma.MaskedArray) else value.tolist() if isinstance(value, np.ndarray) else value for key, value in Si.items()}
 
-    with open(f"{RESULTS_PATH}/sensitivity_analysis.json", "w") as f:
+    with open(f"{RESULTS_PATH}/sensitivity/sensitivity_analysis_{target}.json", "w") as f:
         json.dump(Si_serializable, f)
 
     return Si
@@ -342,7 +342,7 @@ def plot_s1(Si, target):
     plt.title("Morris Sensitivity Analysis (Mu*)")
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(f"{RESULTS_PATH}/sensitivity_analysis_mu_{target}.pdf", bbox_inches="tight", format="pdf", dpi=600)
+    plt.savefig(f"{RESULTS_PATH}/sensitivity/sensitivity_analysis_mu_{target}.pdf", bbox_inches="tight", format="pdf", dpi=600)
     plt.show()
 
     plt.figure(figsize=(7.08, 5))
@@ -353,7 +353,7 @@ def plot_s1(Si, target):
     plt.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f"{RESULTS_PATH}/sensitivity_analysis_mu_sigma_{target}.pdf", bbox_inches="tight", format="pdf", dpi=600)
+    plt.savefig(f"{RESULTS_PATH}/sensitivity/sensitivity_analysis_mu_sigma_{target}.pdf", bbox_inches="tight", format="pdf", dpi=600)
     plt.show()
 
 
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     # main()
     parameter_bounds = json.load(open(f"../data/parameters/parameters_bounds.json", "r"))
     parameter_names = list(parameter_bounds.keys())
-    targets = ["Biomass", "Carotene", "Lutein"]
+    targets = ["Biomass", "Carotene", "Lutein"] #
     for target in targets:
         si = sensitivity_analysis(target)
         plot_s1(si, target)

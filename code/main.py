@@ -575,13 +575,15 @@ def evaluate_trial(parameters, create_plots=False, condition=None, targets=None)
             "Biomass": "DW",
             # 'Lipid': 'Lipid', 'Protein': 'Protein', 'Carbohydrate': 'Carbohydrate',
             "Carotene": "Caro",
-           # "Chlorophyll": "Chl",
+           "Chlorophyll": "Chl",
             "Lutein": "Lutein",
             # "Chlorophyll_concentration": "Chlorophyll_concentration",
             # "Carotene_concentration": "Caro_concentration",
             # "Lutein_concentration": "Lutein_concentration"
         }
         to_fit = {key: value for key, value in to_fit.items() if key in targets}
+        if not  to_fit:
+            raise Exception("No targets to fit")
         experimental_time = np.array(mat["Time (d)"])
         if concentrations.time.max() < experimental_time.max():
             return 1e3
